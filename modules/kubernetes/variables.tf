@@ -1,0 +1,1 @@
+variable "internal_network_name" {}
