@@ -1,7 +1,7 @@
 resource "openstack_compute_instance_v2" "jenkins" {
   name            = "jenkins"
   image_name      = "Ubuntu 24.04"  # Mudei para 22.04 que é mais estável
-  flavor_name     = "m1.large"     # Aumentei os recursos
+  flavor_name     = "m1.medium"     # Aumentei os recursos
   security_groups = [var.sg_default]
   key_pair = "matheus"
 
@@ -9,7 +9,7 @@ resource "openstack_compute_instance_v2" "jenkins" {
     uuid = var.internal_network_id
   }
 
-  user_data = file("${path.module}/jenkins.sh")
+  user_data = file("${path.module}/app/jenkins.sh")
 }
 
 

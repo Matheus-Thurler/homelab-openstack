@@ -43,7 +43,6 @@ module "jenkins" {
   external_network_id = module.network.external_network_id
   internal_network_id = module.network.internal_network_id
   sg_default = module.network.sg_default
-#   external_network_name = module.network.external_network_name
 }
 
 module "openvpn" {
