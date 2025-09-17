@@ -33,19 +33,51 @@ resource "openstack_networking_floatingip_associate_v2" "openvpn_ip" {
 
 
 
+# resource "null_resource" "download_ovpn" {
+#   depends_on = [
+#     openstack_compute_instance_v2.openvpn,
+#     openstack_networking_floatingip_associate_v2.openvpn_ip  # Garante que o IP está associado
+#   ]
+#   provisioner "local-exec" {
+#     command = <<-EOT
+#       if [ ! -f "./client.ovpn" ]; then
+#         scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address}:/home/ubuntu/client.ovpn ./client.ovpn
+#       else
+#         echo "Arquivo client.ovpn já existe localmente. Pulando download."
+#       fi
+#     EOT
+#   }
+ 
+# }
 resource "null_resource" "download_ovpn" {
   depends_on = [
     openstack_compute_instance_v2.openvpn,
-    openstack_networking_floatingip_associate_v2.openvpn_ip  # Garante que o IP está associado
+    openstack_networking_floatingip_associate_v2.openvpn_ip
   ]
+
   provisioner "local-exec" {
     command = <<-EOT
+      # Aguardar o cloud-init completar
+      echo "Aguardando instância ficar pronta..."
+      timeout 300 bash -c '
+        while ! ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+          ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address} \
+          "sudo cloud-init status --wait" 2>/dev/null; do
+          sleep 10
+          echo "Aguardando cloud-init completar..."
+        done
+      '
+      
+      # Agora tentar o SCP
       if [ ! -f "./client.ovpn" ]; then
-        scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address}:/home/ubuntu/client.ovpn ./client.ovpn
+        echo "Baixando arquivo client.ovpn..."
+        scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+          ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address}:/home/ubuntu/client.ovpn \
+          ./client.ovpn
+        echo "Download completo!"
       else
         echo "Arquivo client.ovpn já existe localmente. Pulando download."
       fi
     EOT
   }
- 
 }

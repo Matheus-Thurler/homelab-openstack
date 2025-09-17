@@ -54,7 +54,10 @@ module "openvpn" {
   internal_network_id = module.network.internal_network_id
   sg_default = module.network.sg_default
 }
-# module "kubernetes" {
-#   source = "./modules/kubernetes"
-#   internal_network_name = module.network.internal_network_name
-# }
+
+module "kubernetes" {
+  depends_on = [module.network]
+  source = "./modules/kubernetes"
+  internal_network_id = module.network.internal_network_id
+  sg_default = module.network.sg_default
+}
