@@ -11,4 +11,4 @@ jobs:
       - name: test
         run: |
           echo "testado"
-          ping 192.168.68.114
+          nslookup 192.168.68.114
