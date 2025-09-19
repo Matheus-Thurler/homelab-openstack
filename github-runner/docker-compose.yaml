@@ -17,6 +17,8 @@ services:
     restart: unless-stopped
     # Privileged é útil para cenários de Docker-in-Docker, pode manter.
     privileged: true
+    stdin_open: true
+    tty: true
 
 volumes:
   runner-work:

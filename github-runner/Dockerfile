@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     sudo \
     ca-certificates \
-    gnupg
+    gnupg \
+    expect
 
 # Adiciona o repositório oficial do Docker
 RUN install -m 0755 -d /etc/apt/keyrings
