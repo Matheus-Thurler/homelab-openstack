@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # Adiciona o repositório oficial do Docker
 RUN install -m 0755 -d /etc/apt/keyrings
+RUN apt-get install -y dnsutils
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 RUN chmod a+r /etc/apt/keyrings/docker.gpg
 RUN echo \
