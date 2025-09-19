@@ -1,4 +1,4 @@
-name: Deploy com Helm e Kubectl
+name: Runner test
 
 on:
   workflow_dispatch:
