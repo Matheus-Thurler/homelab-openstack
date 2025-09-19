@@ -1,0 +1,13 @@
+name: Deploy com Helm e Kubectl
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-to-cluster:
+    runs-on: self-hosted
+
+    steps:
+      - name: test
+        run: |
+          echo "testado"
