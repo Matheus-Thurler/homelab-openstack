@@ -1,5 +1,10 @@
-# Define required providers
 terraform {
+  required_providers {
+    openstack = {
+      source = "terraform-provider-openstack/openstack"
+      version = "3.3.2"
+    }
+  }
   backend "s3" {
     bucket = "homelab-tfstate"
     key    = "terraform.tfstate"
