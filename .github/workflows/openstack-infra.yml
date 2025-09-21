@@ -1,0 +1,27 @@
+name: Openstack Infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Create or Destroy Infrastructure'
+        required: true
+        type: choice
+        options:
+          - create
+          - destroy
+
+jobs:
+  terraform:
+    name: Terraform Apply/Destroy
+    runs-on: self-hosted
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: '1.13.2'
+    - name: Terraform Init
+      run: terraform init
