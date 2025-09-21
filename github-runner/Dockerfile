@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     expect \
-    dnsutils
+    dnsutils \
+    unzip
 
 # Adiciona o repositório oficial do Docker
 RUN install -m 0755 -d /etc/apt/keyrings
