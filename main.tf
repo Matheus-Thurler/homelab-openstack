@@ -45,16 +45,6 @@ module "network" {
   source = "./modules/network"
 }
 
-module "jenkins" {
-  depends_on = [module.network]
-  source = "./modules/jenkins"
-  external_network_name = module.network.external_network_name
-  internal_network_name = module.network.internal_network_name
-  external_network_id = module.network.external_network_id
-  internal_network_id = module.network.internal_network_id
-  sg_default = module.network.sg_default
-}
-
 module "openvpn" {
   depends_on = [module.network]
   source = "./modules/openvpn"
