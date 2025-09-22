@@ -13,7 +13,7 @@ jobs:
           echo "testado"
           nslookup 192.168.68.114
       - name: Minio Deploy
-        uses: Matheus-Thurler/reusable-actions/action.yaml@master
+        uses: Matheus-Thurler/reusable-actions/minio-cli@master
         with:
           endpoint: ${{ secrets.MINIO_ENDPOINT }}
           access_key: ${{ secrets.MINIO_ACCESS_KEY }}
