@@ -18,6 +18,6 @@ jobs:
           endpoint: ${{ secrets.MINIO_ENDPOINT }}
           access_key: ${{ secrets.MINIO_ACCESS_KEY }}
           secret_key: ${{ secrets.MINIO_SECRET_KEY }}
-          bucket: 'mybucket'
-          source_dir: 'public'
+          bucket: 'arquivos-openstack'
+          source_dir: 'globals'
           target_dir: '/'
