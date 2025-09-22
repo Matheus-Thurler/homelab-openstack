@@ -13,6 +13,10 @@ on:
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS }}
+  MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+  MINIO_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  MINIO_SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS }}
+  MINIO_BUCKET: 'arquivos-openstack'
 
 jobs:
   terraform:
@@ -32,3 +36,28 @@ jobs:
         terraform_version: '1.13.2'
     - name: Terraform Init
       run: terraform init
+
+    - name: Terraform Apply (Create)
+      if: inputs.action == 'create'
+      run: terraform apply -auto-approve
+      continue-on-error: false
+
+    - name: Terraform Destroy (Destroy)
+      if: inputs.action == 'destroy'
+      run: terraform destroy -auto-approve
+      continue-on-error: false
+
+    - name: Upload generated files to MinIO
+      if: inputs.action == 'create'
+      uses: lovellfelix/minio-deploy-action@v1
+      with:
+        endpoint: ${{ env.MINIO_ENDPOINT }}
+        access_key: ${{ env.MINIO_ACCESS_KEY }}
+        secret_key: ${{ env.MINIO_SECRET_KEY }}
+        bucket: ${{ env.MINIO_BUCKET }}
+        source_dir: '.'
+        target_dir: '/terraform-output/'
+        recursive: true
+      env:
+        # Apenas faz upload dos arquivos específicos gerados pelo Terraform
+        MC_GLOBAL_OPTS: '--include "inventory.ini" --include "*.openvpn" --exclude "*"'
