@@ -11,7 +11,7 @@ terraform {
     region = "placeholder"
 
     endpoints = {
-      s3 = "http://192.168.68.120:9000"
+      s3 = "http://192.168.68.110:9000"
     }
     skip_credentials_validation = true
     skip_metadata_api_check     = true
