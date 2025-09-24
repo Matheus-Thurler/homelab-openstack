@@ -1,24 +1,23 @@
-version: '3.8'
+# version: '3.8' (mantenha o seu)
 
 services:
   github-runner:
     build: .
-    # Esta linha garante que as variáveis do arquivo .env sejam carregadas
     env_file: .env
     environment:
-      # As variáveis carregadas pelo env_file são passadas para o container aqui
       - GITHUB_OWNER=${GITHUB_OWNER}
       - GITHUB_REPOSITORY=${GITHUB_REPO}
       - GITHUB_PAT=${GITHUB_PAT}
       - RUNNER_TOKEN=${RUNNER_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - runner-work:/home/runner/_work
+      # Mapeia uma pasta local chamada 'runner-work' para o diretório de trabalho do runner
+      - ./runner-work:/home/runner/_work
     restart: unless-stopped
-    # Privileged é útil para cenários de Docker-in-Docker, pode manter.
     privileged: true
     stdin_open: true
     tty: true
 
-volumes:
-  runner-work:
+# Remova completamente esta seção de 'volumes' no final do arquivo
+# volumes:
+#  runner-work:
