@@ -8,11 +8,11 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
       - name: test
         run: |
            ls -lah
-      - name: Check out repository code
-        uses: actions/checkout@v4
       - name: Minio Deploy
         
         uses: Matheus-Thurler/reusable-actions/minio-cli@master
