@@ -1,4 +1,4 @@
-# version: '3.8' (mantenha o seu)
+version: '3.8'
 
 services:
   github-runner:
@@ -10,14 +10,13 @@ services:
       - GITHUB_PAT=${GITHUB_PAT}
       - RUNNER_TOKEN=${RUNNER_TOKEN}
     volumes:
+      # Permite que o runner chame o Docker do servidor
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mapeia uma pasta local chamada 'runner-work' para o diretório de trabalho do runner
+      # CRÍTICO: Mapeia uma pasta do servidor para a pasta de trabalho do runner
       - ./runner-work:/home/runner/_work
     restart: unless-stopped
     privileged: true
     stdin_open: true
     tty: true
 
-# Remova completamente esta seção de 'volumes' no final do arquivo
-# volumes:
-#  runner-work:
+# NÂO deve haver uma seção 'volumes:' aqui no final
