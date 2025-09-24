@@ -8,10 +8,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # - name: test
-      #   run: |
-      #     echo "testado"
-      #     nslookup 192.168.68.114
+      - name: test
+        run: |
+           ls -lah
   
       - name: Minio Deploy
         
