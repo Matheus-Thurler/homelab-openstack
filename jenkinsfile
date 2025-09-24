@@ -74,7 +74,7 @@ pipeline {
         }
       }
       steps {
-        dir('kubernetes/02_kubernetes_production_ready/terraform') {
+        dir('./') {
           sh '''
             terraform apply -no-color -auto-approve
           '''
@@ -86,13 +86,13 @@ pipeline {
         }
       }
     }
-    stage('kubespray') {
-      agent {
-        docker {
-          image 'quay.io/kubespray/kubespray:v2.26.0'
-          args '--entrypoint="" -u root'
-        }
-      }
+    // stage('kubespray') {
+    //   agent {
+    //     docker {
+    //       image 'quay.io/kubespray/kubespray:v2.26.0'
+    //       args '--entrypoint="" -u root'
+    //     }
+    //   }
       // steps {
       //   dir('kubernetes/02_kubernetes_production_ready/terraform') {
       //     sh '''
@@ -113,7 +113,7 @@ pipeline {
       //     params.CREATE_OR_DESTROY == "Create"
       //   }
       // }
-    }
+    // }
     stage('destroy') {
       agent {
         docker {
