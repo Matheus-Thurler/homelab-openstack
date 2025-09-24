@@ -18,8 +18,8 @@ resource "openstack_networking_subnet_v2" "external_subnet" {
   gateway_ip      = "192.168.68.1"  # Altere conforme seu gateway
   enable_dhcp     = false
   allocation_pool {
-    start = "192.168.68.120"
-    end   = "192.168.68.140"
+    start = "192.168.68.130"
+    end   = "192.168.68.150"
   }
   dns_nameservers = ["8.8.8.8", "8.8.4.4"]
 }
