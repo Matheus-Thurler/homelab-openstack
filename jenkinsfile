@@ -12,12 +12,12 @@ pipeline {
       description: 'Would you like to create or destroy the Kubernetes cluster?'
     )
   }
-  stage('Clean Workspace') {
-      steps {
-        cleanWs()
-    }
-  }
   stages {
+    stage('Clean Workspace') {
+        steps {
+          cleanWs()
+      }
+    }
     stage('authentication') {
       agent {
         docker {
