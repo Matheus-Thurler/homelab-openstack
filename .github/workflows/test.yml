@@ -20,5 +20,5 @@ jobs:
           access_key: ${{ secrets.MINIO_ACCESS_KEY }}
           secret_key: ${{ secrets.MINIO_SECRET_KEY }}
           bucket: 'arquivos-openstack'
-          source_dir: './globals'
+          source_dir: './globals/globals.yaml'
           target_dir: '/'
