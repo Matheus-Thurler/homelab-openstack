@@ -12,12 +12,14 @@ jobs:
       #   run: |
       #     echo "testado"
       #     nslookup 192.168.68.114
+  
       - name: Minio Deploy
+        
         uses: Matheus-Thurler/reusable-actions/minio-cli@master
         with:
           endpoint: ${{ secrets.MINIO_ENDPOINT }}
           access_key: ${{ secrets.MINIO_ACCESS_KEY }}
           secret_key: ${{ secrets.MINIO_SECRET_KEY }}
           bucket: 'arquivos-openstack'
-          source_dir: 'globals'
+          source_dir: './globals'
           target_dir: '/'
