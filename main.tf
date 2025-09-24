@@ -56,7 +56,7 @@ module "openvpn" {
 }
 
 module "kubernetes" {
-  depends_on = [module.network]
+  depends_on = [module.network, module.openvpn]
   source = "./modules/kubernetes"
   internal_network_id = module.network.internal_network_id
   sg_default = module.network.sg_default
