@@ -3,7 +3,7 @@ pipeline {
   environment {
     AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
     AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-    // JENKINS_PUB_KEY = credentials('jenkins-pub-key')
+    JENKINS_PUB_KEY = credentials('jenkins-pub-key')
   }
   parameters {
     choice(
@@ -93,27 +93,27 @@ pipeline {
           args '--entrypoint="" -u root'
         }
       }
-      steps {
-        dir('kubernetes/02_kubernetes_production_ready/terraform') {
-          sh '''
-            export ANSIBLE_ROLES_PATH="$ANSIBLE_ROLES_PATH:/kubespray/roles"
-            export ANSIBLE_HOST_KEY_CHECKING="False"
+    //   steps {
+    //     dir('kubernetes/02_kubernetes_production_ready/terraform') {
+    //       sh '''
+    //         export ANSIBLE_ROLES_PATH="$ANSIBLE_ROLES_PATH:/kubespray/roles"
+    //         export ANSIBLE_HOST_KEY_CHECKING="False"
 
-            ansible-playbook \
-              --become \
-              --inventory inventory.ini \
-              --extra-vars "kube_network_plugin=flannel" \
-              --private-key id_rsa \
-              /kubespray/cluster.yml
-          '''
-        }
-      }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Create"
-        }
-      }
-    }
+    //         ansible-playbook \
+    //           --become \
+    //           --inventory inventory.ini \
+    //           --extra-vars "kube_network_plugin=flannel" \
+    //           --private-key id_rsa \
+    //           /kubespray/cluster.yml
+    //       '''
+    //     }
+    //   }
+    //   when {
+    //     expression {
+    //       params.CREATE_OR_DESTROY == "Create"
+    //     }
+    //   }
+    // }
     stage('destroy') {
       agent {
         docker {
