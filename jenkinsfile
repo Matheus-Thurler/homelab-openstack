@@ -86,13 +86,6 @@ pipeline {
           '''
         }
       }
-      steps {
-        minio(
-            bucket: 'arquivos-openstack',
-            includes: 'client.ovpn',
-            credentialsId: 'minio-access-keys'
-        )
-      }
       when {
         expression {
           params.CREATE_OR_DESTROY == "Create"
