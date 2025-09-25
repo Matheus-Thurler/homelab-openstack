@@ -102,6 +102,7 @@ pipeline {
       steps {
         dir('./') {
           sh  '''
+            ls -lah
             ls -la ./modules/openvpn/app/
             if [ -f "client.ovpn"]; then
               mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
