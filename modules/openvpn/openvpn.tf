@@ -32,52 +32,39 @@ resource "openstack_networking_floatingip_associate_v2" "openvpn_ip" {
 }
 
 
+# 
 
-# resource "null_resource" "download_ovpn" {
-#   depends_on = [
-#     openstack_compute_instance_v2.openvpn,
-#     openstack_networking_floatingip_associate_v2.openvpn_ip  # Garante que o IP está associado
-#   ]
-#   provisioner "local-exec" {
-#     command = <<-EOT
-#       if [ ! -f "./client.ovpn" ]; then
-#         scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address}:/home/ubuntu/client.ovpn ./client.ovpn
-#       else
-#         echo "Arquivo client.ovpn já existe localmente. Pulando download."
-#       fi
-#     EOT
-#   }
- 
-# }
 resource "null_resource" "download_ovpn" {
   depends_on = [
-    openstack_compute_instance_v2.openvpn,
     openstack_networking_floatingip_associate_v2.openvpn_ip
   ]
 
+  # Força a reexecução se o IP mudar
+  triggers = {
+    instance_ip = openstack_networking_floatingip_v2.openvpn_ip.address
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
-      # Aguardar o cloud-init completar
-      echo "Aguardando instância ficar pronta..."
-      timeout 300 bash -c '
-        while ! ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-          ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address} \
-          "sudo cloud-init status --wait" 2>/dev/null; do
+      echo "Aguardando a instância em ${self.triggers.instance_ip} ficar pronta..."
+
+      # Espera o cloud-init terminar (usando 'sh' para compatibilidade)
+      timeout 300 sh -c '
+        while ! ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@${self.triggers.instance_ip} "sudo cloud-init status --wait"; do
+          echo "Aguardando cloud-init finalizar..."
           sleep 10
-          echo "Aguardando cloud-init completar..."
         done
       '
       
-      # Agora tentar o SCP
-      if [ ! -f "./client.ovpn" ]; then
-        echo "Baixando arquivo client.ovpn..."
-        scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
-          ubuntu@${openstack_networking_floatingip_v2.openvpn_ip.address}:/home/ubuntu/client.ovpn \
-          ./client.ovpn
-        echo "Download completo!"
-      else
-        echo "Arquivo client.ovpn já existe localmente. Pulando download."
-      fi
+      echo "Instância pronta. Baixando client.ovpn..."
+      
+      # Baixa e sobrescreve o arquivo. Falha a pipeline se o scp der erro.
+      set -e 
+      scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        ubuntu@${self.triggers.instance_ip}:/home/ubuntu/client.ovpn \
+        ./client.ovpn
+        
+      echo "Download concluído com sucesso!"
     EOT
   }
 }
