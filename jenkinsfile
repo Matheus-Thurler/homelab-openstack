@@ -107,13 +107,14 @@ pipeline {
       steps {
         dir('./') {
           sh  '''
-            ls -la
-            if [-f "client.ovpn"]; then
+            ls -la ./modules/openvpn/
+            if [ -f "client.ovpn"]; then
               mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
               mc cp client.ovpn deploy/arquivos-openstack/
               echo "Arquivo deployado"
             else
               echo "Arquivo fez deploy no primeiro apply"
+            fi
           '''
         }
       }
