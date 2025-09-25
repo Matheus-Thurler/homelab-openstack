@@ -22,14 +22,7 @@ terraform {
 }
 # Configure the OpenStack Provider
 provider "openstack" {
-  # auth_url    = "http://192.168.68.103:5000/v3"  # ← CORRIGIDO: adicione /v3
-  # user_name   = "admin"                          # Usuário com permissões
-  # password    = "u3dsrYIZREdas44LfoYDpn4goXun4SAQPnQRpTLP"                # Senha do usuário admin
-  # tenant_name = "admin"                          # Projeto admin
-  # region      = "RegionOne"
-  # insecure    = true
-                   # Importante para HTTP
-    cloud = "kolla-admin"
+  cloud = "kolla-admin"
 }
 
 module "images" {
