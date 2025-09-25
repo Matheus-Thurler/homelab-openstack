@@ -31,6 +31,12 @@ pipeline {
         }
       }
     }
+    stage('Preparation') {
+      steps {
+        echo 'Cleaning up workspace...'
+        deleteDir() // <-- Esta é a linha mais importante para resolver o seu problema.
+      }
+    }
     stage('init') {
       agent {
         docker {
