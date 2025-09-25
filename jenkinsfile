@@ -79,7 +79,6 @@ pipeline {
         docker {
           image 'hashicorp/terraform:1.9.8'
           args '--entrypoint=""'
-          args '-u root'
         }
       }
       steps {
@@ -88,6 +87,82 @@ pipeline {
             terraform apply -no-color -auto-approve
           '''
         }
+      steps {
+        dir('./') {
+          sh '''
+            set -e // Garante que o script pare se houver um erro
+            
+            echo "Executando terraform apply..."
+            terraform apply -no-color -auto-approve
+
+            echo "Salvando o IP da VPN em um arquivo..."
+            # O '-raw' remove as aspas do output, salvando apenas o IP puro
+            terraform output -raw openvpn_ip > openvpn_ip.txt
+
+            echo "IP salvo:"
+            cat openvpn_ip.txt
+          '''
+        }
+      }
+      }
+      when {
+        expression {
+          params.CREATE_OR_DESTROY == "Create"
+        }
+      }
+    }
+    stage('Download OpenVPN Config') {
+      agent {
+        docker {
+          // Usamos uma imagem leve que contém ssh e scp
+          image 'alpine:latest'
+          // Rodamos como root para evitar problemas de permissão
+          args '-u root --entrypoint=""'
+        }
+      }
+      steps {
+        sh '''
+          set -e // Garante que o script pare se houver um erro
+
+          # Instala o cliente OpenSSH (ssh e scp) na imagem alpine
+          apk update && apk add openssh-client
+
+          # Lê o endereço IP do arquivo salvo no stage anterior
+          IP_ADDRESS=$(cat openvpn_ip.txt)
+          if [ -z "$IP_ADDRESS" ]; then
+            echo "ERRO: Não foi possível ler o endereço IP do arquivo openvpn_ip.txt"
+            exit 1
+          fi
+
+          echo "Tentando conectar na instância com IP: $IP_ADDRESS"
+
+          # É CRUCIAL garantir as permissões corretas para a chave privada
+          chmod 600 id_rsa
+
+          # Loop de espera: Tenta verificar se o arquivo client.ovpn existe na máquina remota
+          # Isso evita que o scp tente baixar um arquivo que ainda não foi gerado.
+          echo "Aguardando o arquivo client.ovpn ser gerado na instância..."
+          for i in $(seq 1 30); do # Tenta por 5 minutos (30 tentativas * 10 segundos)
+            # O comando 'test -f' verifica se o arquivo existe
+            if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
+              echo "Arquivo encontrado na instância!"
+              break
+            fi
+            echo "Arquivo ainda não está pronto. Tentando novamente em 10 segundos..."
+            sleep 10
+            if [ $i -eq 30 ]; then
+                echo "ERRO: Timeout esperando pelo arquivo client.ovpn."
+                exit 1
+            fi
+          done
+
+          echo "Baixando o arquivo client.ovpn..."
+          scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
+          
+          echo "Download concluído com sucesso! O arquivo client.ovpn está no workspace."
+          ls -l client.ovpn
+        '''
       }
       when {
         expression {
