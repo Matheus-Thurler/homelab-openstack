@@ -39,7 +39,6 @@ resource "null_resource" "download_ovpn" {
     openstack_networking_floatingip_associate_v2.openvpn_ip
   ]
 
-  # Força a reexecução se o IP mudar
   triggers = {
     instance_ip = openstack_networking_floatingip_v2.openvpn_ip.address
   }
@@ -48,9 +47,9 @@ resource "null_resource" "download_ovpn" {
     command = <<-EOT
       echo "Aguardando a instância em ${self.triggers.instance_ip} ficar pronta..."
 
-      # Espera o cloud-init terminar (usando 'sh' para compatibilidade)
+      # Espera o cloud-init terminar (usando 'sh' e o caminho relativo para a chave)
       timeout 300 sh -c '
-        while ! ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@${self.triggers.instance_ip} "sudo cloud-init status --wait"; do
+        while ! ssh -i ./id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ubuntu@${self.triggers.instance_ip} "sudo cloud-init status --wait"; do
           echo "Aguardando cloud-init finalizar..."
           sleep 10
         done
@@ -58,9 +57,9 @@ resource "null_resource" "download_ovpn" {
       
       echo "Instância pronta. Baixando client.ovpn..."
       
-      # Baixa e sobrescreve o arquivo. Falha a pipeline se o scp der erro.
+      # Baixa o arquivo (usando o caminho relativo para a chave)
       set -e 
-      scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+      scp -i ./id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
         ubuntu@${self.triggers.instance_ip}:/home/ubuntu/client.ovpn \
         ./client.ovpn
         
