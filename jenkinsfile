@@ -93,13 +93,26 @@ pipeline {
       }
     }
     stage('Fazer Upload para o MinIO') {
-      steps {
-          minio(
-              bucket: 'arquivos-openstack',
-              includes: 'client.ovpn',
-              credentialsId: 'minio-access-keys'
-          )
+      agent {
+        docker {
+          image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
+          args '--entrypoint="" -u root'
         }
+      }
+      environment {
+        MINIO_ENDPOINT = 'http://192.168.68.110:9000'
+        MINIO_ACCESS_KEY = credentials('aws-access-key-id')
+        MINIO_SECRET_KEY = credentials('aws-secret-access-key')
+    }
+      steps {
+        dir('./') {
+          sh  '''
+            ls -la 
+            mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+            mc cp client.ovpn deploy/arquivos-openstack/
+          '''
+        }
+      }
     }
     // stage('kubespray') {
     //   agent {
