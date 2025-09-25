@@ -92,15 +92,15 @@ pipeline {
         }
       }
     }
-    // stage('Fazer Upload para o MinIO') {
-    //   steps {
-    //       minio(
-    //           bucket: 'arquivos-openstack',
-    //           includes: 'client.ovpn',
-    //           credentialsId: 'minio-access-keys'
-    //       )
-    //     }
-    // }
+    stage('Fazer Upload para o MinIO') {
+      steps {
+          minio(
+              bucket: 'arquivos-openstack',
+              includes: 'client.ovpn',
+              credentialsId: 'minio-access-keys'
+          )
+        }
+    }
     // stage('kubespray') {
     //   agent {
     //     docker {
