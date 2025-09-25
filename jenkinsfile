@@ -96,7 +96,8 @@ pipeline {
       steps {
           minio(
               bucket: 'arquivos-openstack',
-              includes: 'client.ovpn'
+              includes: 'client.ovpn',
+              credentialsId: 'minio-access-keys'
           )
         }
     }
