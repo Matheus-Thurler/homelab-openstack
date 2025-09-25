@@ -86,21 +86,28 @@ pipeline {
           '''
         }
       }
+      steps {
+        minio(
+            bucket: 'arquivos-openstack',
+            includes: 'client.ovpn',
+            credentialsId: 'minio-access-keys'
+        )
+      }
       when {
         expression {
           params.CREATE_OR_DESTROY == "Create"
         }
       }
     }
-    stage('Fazer Upload para o MinIO') {
-      steps {
-          minioUpload(
-              bucket: 'arquivos-openstack',
-              includes: 'client.ovpn',
-              credentialsId: 'minio-access-keys'
-          )
-        }
-    }
+    // stage('Fazer Upload para o MinIO') {
+    //   steps {
+    //       minio(
+    //           bucket: 'arquivos-openstack',
+    //           includes: 'client.ovpn',
+    //           credentialsId: 'minio-access-keys'
+    //       )
+    //     }
+    // }
     // stage('kubespray') {
     //   agent {
     //     docker {
