@@ -1,154 +1,395 @@
+// pipeline {
+//   agent any
+//   environment {
+//     AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
+//     AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+//     JENKINS_PUB_KEY = credentials('jenkins-pub-key')
+//   }
+//   parameters {
+//     choice(
+//       name: 'CREATE_OR_DESTROY',
+//       choices: ['Create', 'Destroy'],
+//       description: 'Would you like to create or destroy the Kubernetes cluster?'
+//     )
+//   }
+//   stages {
+//     stage('authentication') {
+//       agent {
+//         docker {
+//           image 'alpine'
+//         }
+//       }
+//       steps {
+//         dir('./') {
+//           withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-priv-key', keyFileVariable: 'JENKINS_PRIV_KEY')]) {
+//             sh '''
+//               cp "$JENKINS_PRIV_KEY" id_rsa
+//               echo "$JENKINS_PUB_KEY" > id_rsa.pub
+//               echo "ok"
+//             '''
+//           }
+//         }
+//       }
+//     }
+//     stage('Preparation') {
+//       steps {
+//         echo 'Cleaning up workspace...'
+//         deleteDir() // <-- Esta é a linha mais importante para resolver o seu problema.
+//       }
+//     }
+//     stage('init') {
+//       agent {
+//         docker {
+//           image 'hashicorp/terraform:1.9.8'
+//           args '--entrypoint=""'
+          
+//         }
+//       }
+//       steps {
+//         dir('./') {
+//           sh '''
+//           terraform init -reconfigure -no-color
+//             terraform init -no-color
+//           '''
+//         }
+//       }
+//     }
+//     stage('plan') {
+//       agent {
+//         docker {
+//           image 'hashicorp/terraform:1.9.8'
+//           args '--entrypoint=""'
+//         }
+//       }
+//       steps {
+//         dir('./') {
+//           sh '''
+//             terraform plan -no-color
+//           '''
+//         }
+//       }
+//       when {
+//         expression {
+//           params.CREATE_OR_DESTROY == "Create"
+//         }
+//       }
+//     }
+//     stage('apply') {
+//       agent {
+//         docker {
+//           image 'hashicorp/terraform:1.9.8'
+//           args '--entrypoint=""'
+//         }
+//       }
+//       steps {
+//         dir('./') {
+//           sh '''
+//             terraform apply -no-color -auto-approve
+//           '''
+//         }
+//       steps {
+//         dir('./') {
+//           sh '''
+//             set -e // Garante que o script pare se houver um erro
+            
+//             echo "Executando terraform apply..."
+//             terraform apply -no-color -auto-approve
+
+//             echo "Salvando o IP da VPN em um arquivo..."
+//             # O '-raw' remove as aspas do output, salvando apenas o IP puro
+//             terraform output -raw openvpn_ip > openvpn_ip.txt
+
+//             echo "IP salvo:"
+//             cat openvpn_ip.txt
+//           '''
+//         }
+//       }
+//       }
+//       when {
+//         expression {
+//           params.CREATE_OR_DESTROY == "Create"
+//         }
+//       }
+//     }
+//     stage('Download OpenVPN Config') {
+//       agent {
+//         docker {
+//           // Usamos uma imagem leve que contém ssh e scp
+//           image 'alpine:latest'
+//           // Rodamos como root para evitar problemas de permissão
+//           args '-u root --entrypoint=""'
+//         }
+//       }
+//       steps {
+//         sh '''
+//           set -e // Garante que o script pare se houver um erro
+
+//           # Instala o cliente OpenSSH (ssh e scp) na imagem alpine
+//           apk update && apk add openssh-client
+
+//           # Lê o endereço IP do arquivo salvo no stage anterior
+//           IP_ADDRESS=$(cat openvpn_ip.txt)
+//           if [ -z "$IP_ADDRESS" ]; then
+//             echo "ERRO: Não foi possível ler o endereço IP do arquivo openvpn_ip.txt"
+//             exit 1
+//           fi
+
+//           echo "Tentando conectar na instância com IP: $IP_ADDRESS"
+
+//           # É CRUCIAL garantir as permissões corretas para a chave privada
+//           chmod 600 id_rsa
+
+//           # Loop de espera: Tenta verificar se o arquivo client.ovpn existe na máquina remota
+//           # Isso evita que o scp tente baixar um arquivo que ainda não foi gerado.
+//           echo "Aguardando o arquivo client.ovpn ser gerado na instância..."
+//           for i in $(seq 1 30); do # Tenta por 5 minutos (30 tentativas * 10 segundos)
+//             # O comando 'test -f' verifica se o arquivo existe
+//             if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
+//               echo "Arquivo encontrado na instância!"
+//               break
+//             fi
+//             echo "Arquivo ainda não está pronto. Tentando novamente em 10 segundos..."
+//             sleep 10
+//             if [ $i -eq 30 ]; then
+//                 echo "ERRO: Timeout esperando pelo arquivo client.ovpn."
+//                 exit 1
+//             fi
+//           done
+
+//           echo "Baixando o arquivo client.ovpn..."
+//           scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+//             ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
+          
+//           echo "Download concluído com sucesso! O arquivo client.ovpn está no workspace."
+//           ls -l client.ovpn
+//         '''
+//       }
+//       when {
+//         expression {
+//           params.CREATE_OR_DESTROY == "Create"
+//         }
+//       }
+//     }
+//     stage('Fazer Upload para o MinIO') {
+//       agent {
+//         docker {
+//           image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
+//           args '--entrypoint="" -u root'
+//         }
+//       }
+//       environment {
+//         MINIO_ENDPOINT = 'http://192.168.68.110:9000'
+//         MINIO_ACCESS_KEY = credentials('aws-access-key-id')
+//         MINIO_SECRET_KEY = credentials('aws-secret-access-key')
+//     }
+//       steps {
+//         dir('./') {
+//           sh  '''
+//             ls -lah
+//             ls -la ./modules/openvpn/app/
+//             if [ -f "client.ovpn"]; then
+//               mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+//               mc cp client.ovpn deploy/arquivos-openstack/
+//               echo "Arquivo deployado"
+//             else
+//               echo "Arquivo fez deploy no primeiro apply"
+//             fi
+//           '''
+//         }
+//       }
+//       when {
+//         expression {
+//           params.CREATE_OR_DESTROY == "Create"
+//         }
+//       }
+//     }
+//     // stage('kubespray') {
+//     //   agent {
+//     //     docker {
+//     //       image 'quay.io/kubespray/kubespray:v2.26.0'
+//     //       args '--entrypoint="" -u root'
+//     //     }
+//     //   }
+//       // steps {
+//       //   dir('kubernetes/02_kubernetes_production_ready/terraform') {
+//       //     sh '''
+//       //       export ANSIBLE_ROLES_PATH="$ANSIBLE_ROLES_PATH:/kubespray/roles"
+//       //       export ANSIBLE_HOST_KEY_CHECKING="False"
+
+//       //       ansible-playbook \
+//       //         --become \
+//       //         --inventory inventory.ini \
+//       //         --extra-vars "kube_network_plugin=flannel" \
+//       //         --private-key id_rsa \
+//       //         /kubespray/cluster.yml
+//       //     '''
+//       //   }
+//       // }
+//       // when {
+//       //   expression {
+//       //     params.CREATE_OR_DESTROY == "Create"
+//       //   }
+//       // }
+//     // }
+//     stage('destroy') {
+//       agent {
+//         docker {
+//           image 'hashicorp/terraform:1.9.8'
+//           args '--entrypoint=""'
+//         }
+//       }
+//       steps {
+//         dir('./') {
+//           sh '''
+//             terraform apply -destroy -no-color -auto-approve
+//           '''
+//         }
+//       }
+//       when {
+//         expression {
+//           params.CREATE_OR_DESTROY == "Destroy"
+//         }
+//       }
+//     }
+//   }
+// }
+
 pipeline {
   agent any
+
   environment {
-    AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
+    // Definindo credenciais globais para a pipeline
+    AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
     AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-    JENKINS_PUB_KEY = credentials('jenkins-pub-key')
+    JENKINS_PUB_KEY       = credentials('jenkins-pub-key')
   }
+
   parameters {
     choice(
       name: 'CREATE_OR_DESTROY',
       choices: ['Create', 'Destroy'],
-      description: 'Would you like to create or destroy the Kubernetes cluster?'
+      description: 'Deseja criar ou destruir a infraestrutura?'
     )
   }
+
   stages {
+
+    // Etapa 1: Prepara as chaves SSH no workspace
     stage('authentication') {
       agent {
-        docker {
-          image 'alpine'
-        }
+        docker { image 'alpine' }
       }
       steps {
-        dir('./') {
-          withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-priv-key', keyFileVariable: 'JENKINS_PRIV_KEY')]) {
-            sh '''
-              cp "$JENKINS_PRIV_KEY" id_rsa
-              echo "$JENKINS_PUB_KEY" > id_rsa.pub
-              echo "ok"
-            '''
-          }
+        // Usa o withCredentials para carregar a chave privada de forma segura
+        withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-priv-key', keyFileVariable: 'JENKINS_PRIV_KEY')]) {
+          sh '''
+            # Copia a chave privada e pública para arquivos no workspace
+            cp "$JENKINS_PRIV_KEY" id_rsa
+            echo "$JENKINS_PUB_KEY" > id_rsa.pub
+            # Garante a permissão correta para a chave privada
+            chmod 600 id_rsa
+            echo "Chaves SSH preparadas no workspace."
+          '''
         }
       }
     }
+
+    // Etapa 2: Limpa o workspace para garantir uma execução limpa
     stage('Preparation') {
       steps {
-        echo 'Cleaning up workspace...'
-        deleteDir() // <-- Esta é a linha mais importante para resolver o seu problema.
+        echo 'Limpando o workspace...'
+        deleteDir()
       }
     }
+
+    // Etapa 3: Inicializa o Terraform
     stage('init') {
       agent {
         docker {
           image 'hashicorp/terraform:1.9.8'
-          args '--entrypoint=""'
-          
+          // Roda como root para evitar problemas de permissão
+          args '-u root --entrypoint=""'
         }
       }
       steps {
-        dir('./') {
-          sh '''
-          terraform init -reconfigure -no-color
-            terraform init -no-color
-          '''
-        }
+        sh 'terraform init -reconfigure -no-color'
       }
     }
+
+    // Etapa 4: Gera o plano do Terraform
     stage('plan') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
         docker {
           image 'hashicorp/terraform:1.9.8'
-          args '--entrypoint=""'
+          args '-u root --entrypoint=""'
         }
       }
       steps {
-        dir('./') {
-          sh '''
-            terraform plan -no-color
-          '''
-        }
-      }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Create"
-        }
+        sh 'terraform plan -no-color'
       }
     }
+
+    // Etapa 5: Aplica as configurações do Terraform
     stage('apply') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
         docker {
           image 'hashicorp/terraform:1.9.8'
-          args '--entrypoint=""'
-        }
-      }
-      steps {
-        dir('./') {
-          sh '''
-            terraform apply -no-color -auto-approve
-          '''
-        }
-      steps {
-        dir('./') {
-          sh '''
-            set -e // Garante que o script pare se houver um erro
-            
-            echo "Executando terraform apply..."
-            terraform apply -no-color -auto-approve
-
-            echo "Salvando o IP da VPN em um arquivo..."
-            # O '-raw' remove as aspas do output, salvando apenas o IP puro
-            terraform output -raw openvpn_ip > openvpn_ip.txt
-
-            echo "IP salvo:"
-            cat openvpn_ip.txt
-          '''
-        }
-      }
-      }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Create"
-        }
-      }
-    }
-    stage('Download OpenVPN Config') {
-      agent {
-        docker {
-          // Usamos uma imagem leve que contém ssh e scp
-          image 'alpine:latest'
-          // Rodamos como root para evitar problemas de permissão
           args '-u root --entrypoint=""'
         }
       }
       steps {
         sh '''
-          set -e // Garante que o script pare se houver um erro
+          # Garante que o script pare se houver um erro
+          set -e
+          
+          echo "Executando terraform apply..."
+          terraform apply -no-color -auto-approve
 
-          # Instala o cliente OpenSSH (ssh e scp) na imagem alpine
-          apk update && apk add openssh-client
+          echo "Salvando o IP da VPN em um arquivo..."
+          # O '-raw' remove as aspas do output, salvando apenas o IP puro
+          terraform output -raw openvpn_ip > openvpn_ip.txt
 
-          # Lê o endereço IP do arquivo salvo no stage anterior
+          echo "IP salvo:"
+          cat openvpn_ip.txt
+        '''
+      }
+    }
+    
+    // Etapa 6: Baixa o arquivo de configuração da VPN
+    stage('Download OpenVPN Config') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
+      agent {
+        docker {
+          image 'alpine:latest'
+          args '-u root --entrypoint=""'
+        }
+      }
+      steps {
+        sh '''
+          set -e 
+
+          # Instala o cliente OpenSSH (ssh e scp)
+          apk update && apk add --no-cache openssh-client
+
           IP_ADDRESS=$(cat openvpn_ip.txt)
           if [ -z "$IP_ADDRESS" ]; then
-            echo "ERRO: Não foi possível ler o endereço IP do arquivo openvpn_ip.txt"
+            echo "ERRO: Não foi possível ler o endereço IP."
             exit 1
           fi
 
           echo "Tentando conectar na instância com IP: $IP_ADDRESS"
 
-          # É CRUCIAL garantir as permissões corretas para a chave privada
-          chmod 600 id_rsa
-
-          # Loop de espera: Tenta verificar se o arquivo client.ovpn existe na máquina remota
-          # Isso evita que o scp tente baixar um arquivo que ainda não foi gerado.
+          # Loop para aguardar o arquivo client.ovpn ser gerado
           echo "Aguardando o arquivo client.ovpn ser gerado na instância..."
-          for i in $(seq 1 30); do # Tenta por 5 minutos (30 tentativas * 10 segundos)
-            # O comando 'test -f' verifica se o arquivo existe
+          # Tenta por 5 minutos
+          for i in $(seq 1 30); do
             if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
               echo "Arquivo encontrado na instância!"
               break
             fi
-            echo "Arquivo ainda não está pronto. Tentando novamente em 10 segundos..."
+            echo "Arquivo ainda não está pronto. Tentando novamente em 10s..."
             sleep 10
             if [ $i -eq 30 ]; then
                 echo "ERRO: Timeout esperando pelo arquivo client.ovpn."
@@ -160,95 +401,52 @@ pipeline {
           scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
           
-          echo "Download concluído com sucesso! O arquivo client.ovpn está no workspace."
+          echo "Download concluído com sucesso!"
           ls -l client.ovpn
         '''
       }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Create"
-        }
-      }
     }
+
+    // Etapa 7: Faz o upload do arquivo para o MinIO
     stage('Fazer Upload para o MinIO') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
         docker {
           image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
-          args '--entrypoint="" -u root'
+          args '-u root --entrypoint=""'
         }
       }
       environment {
-        MINIO_ENDPOINT = 'http://192.168.68.110:9000'
+        MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
         MINIO_ACCESS_KEY = credentials('aws-access-key-id')
         MINIO_SECRET_KEY = credentials('aws-secret-access-key')
-    }
+      }
       steps {
-        dir('./') {
-          sh  '''
-            ls -lah
-            ls -la ./modules/openvpn/app/
-            if [ -f "client.ovpn"]; then
-              mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
-              mc cp client.ovpn deploy/arquivos-openstack/
-              echo "Arquivo deployado"
-            else
-              echo "Arquivo fez deploy no primeiro apply"
-            fi
-          '''
-        }
-      }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Create"
-        }
+        sh  '''
+          # O 'if' precisa de um espaço depois do '[' e antes do ']'
+          if [ -f "client.ovpn" ]; then
+            mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+            mc cp client.ovpn deploy/arquivos-openstack/
+            echo "Arquivo client.ovpn enviado para o MinIO."
+          else
+            echo "Arquivo client.ovpn não encontrado para upload."
+            exit 1
+          fi
+        '''
       }
     }
-    // stage('kubespray') {
-    //   agent {
-    //     docker {
-    //       image 'quay.io/kubespray/kubespray:v2.26.0'
-    //       args '--entrypoint="" -u root'
-    //     }
-    //   }
-      // steps {
-      //   dir('kubernetes/02_kubernetes_production_ready/terraform') {
-      //     sh '''
-      //       export ANSIBLE_ROLES_PATH="$ANSIBLE_ROLES_PATH:/kubespray/roles"
-      //       export ANSIBLE_HOST_KEY_CHECKING="False"
 
-      //       ansible-playbook \
-      //         --become \
-      //         --inventory inventory.ini \
-      //         --extra-vars "kube_network_plugin=flannel" \
-      //         --private-key id_rsa \
-      //         /kubespray/cluster.yml
-      //     '''
-      //   }
-      // }
-      // when {
-      //   expression {
-      //     params.CREATE_OR_DESTROY == "Create"
-      //   }
-      // }
-    // }
+    // Etapa de Destruição
     stage('destroy') {
+      when { expression { params.CREATE_OR_DESTROY == "Destroy" } }
       agent {
         docker {
           image 'hashicorp/terraform:1.9.8'
-          args '--entrypoint=""'
+          args '-u root --entrypoint=""'
         }
       }
       steps {
-        dir('./') {
-          sh '''
-            terraform apply -destroy -no-color -auto-approve
-          '''
-        }
-      }
-      when {
-        expression {
-          params.CREATE_OR_DESTROY == "Destroy"
-        }
+        sh 'terraform apply -destroy -no-color -auto-approve'
       }
     }
   }
