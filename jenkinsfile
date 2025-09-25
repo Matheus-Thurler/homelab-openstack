@@ -94,10 +94,9 @@ pipeline {
     }
     stage('Fazer Upload para o MinIO') {
       steps {
-          minio(
+          minioUpload(
               bucket: 'arquivos-openstack',
-              includes: 'client.ovpn',
-              credentialsId: 'minio-access-keys'
+              includes: 'client.ovpn'
           )
         }
     }
