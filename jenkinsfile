@@ -18,7 +18,15 @@ pipeline {
 
   stages {
 
-    // Etapa 1: Prepara as chaves SSH no workspace
+    // Etapa 1: Limpa o workspace para garantir uma execução limpa
+    stage('Preparation') {
+      steps {
+        echo 'Limpando o workspace...'
+        deleteDir()
+      }
+    }
+
+    // Etapa 2: Prepara as chaves SSH no workspace
     stage('authentication') {
       agent {
         docker { image 'alpine' }
@@ -38,15 +46,36 @@ pipeline {
       }
     }
 
-    // Etapa 2: Limpa o workspace para garantir uma execução limpa
-    stage('Preparation') {
+    // NOVO STAGE: Etapa 3 - Baixa a configuração do OpenStack (clouds.yaml)
+    stage('Download OpenStack Config') {
+      agent {
+        docker {
+          image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
+          args '-u root --entrypoint=""'
+        }
+      }
+      environment {
+        MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
+        MINIO_ACCESS_KEY = credentials('aws-access-key-id')
+        MINIO_SECRET_KEY = credentials('aws-secret-access-key')
+      }
       steps {
-        echo 'Limpando o workspace...'
-        deleteDir()
+        sh '''
+          set -e
+          echo "Configurando alias para o MinIO..."
+          mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+
+          echo "Baixando o arquivo clouds.yaml do MinIO..."
+          # Assume que o arquivo está em 'arquivos-openstack/clouds.yaml'
+          mc cp deploy/arquivos-openstack/clouds.yaml ./clouds.yaml
+          
+          echo "Download do clouds.yaml concluído."
+          ls -l clouds.yaml
+        '''
       }
     }
 
-    // Etapa 3: Inicializa o Terraform
+    // Etapa 4: Inicializa o Terraform
     stage('init') {
       agent {
         docker {
@@ -60,7 +89,7 @@ pipeline {
       }
     }
 
-    // Etapa 4: Gera o plano do Terraform
+    // Etapa 5: Gera o plano do Terraform
     stage('plan') {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
@@ -74,7 +103,7 @@ pipeline {
       }
     }
 
-    // Etapa 5: Aplica as configurações do Terraform
+    // Etapa 6: Aplica as configurações do Terraform
     stage('apply') {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
@@ -101,7 +130,7 @@ pipeline {
       }
     }
     
-    // Etapa 6: Baixa o arquivo de configuração da VPN
+    // Etapa 7: Baixa o arquivo de configuração da VPN
     stage('Download OpenVPN Config') {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
@@ -151,7 +180,7 @@ pipeline {
       }
     }
 
-    // Etapa 7: Faz o upload do arquivo para o MinIO
+    // Etapa 8: Faz o upload do arquivo para o MinIO
     stage('Fazer Upload para o MinIO') {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
@@ -194,7 +223,7 @@ pipeline {
       }
     }
 
-    // NOVO STAGE: Etapa de Limpeza do Artefato no MinIO
+    // Etapa de Limpeza do Artefato no MinIO
     stage('Cleanup MinIO') {
       when { expression { params.CREATE_OR_DESTROY == "Destroy" } }
       agent {
@@ -214,7 +243,7 @@ pipeline {
           mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
 
           echo "Verificando se o arquivo client.ovpn existe no MinIO antes de remover..."
-          # 'mc stat' retorna um erro se o arquivo não existir. O '|| true' evita que a pipeline falhe.
+          # 'mc stat' retorna um erro se o arquivo não existir.
           if mc stat deploy/arquivos-openstack/client.ovpn > /dev/null 2>&1; then
             echo "Arquivo encontrado. Removendo client.ovpn do MinIO..."
             mc rm deploy/arquivos-openstack/client.ovpn
