@@ -6,5 +6,6 @@ FROM quay.io/kubespray/kubespray:v2.28.0
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openvpn \
+    curl \
     iproute2 \
     && rm -rf /var/lib/apt/lists/*
