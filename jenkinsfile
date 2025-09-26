@@ -437,6 +437,7 @@ pipeline {
                   echo "Baixando arquivo..."
                   scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
                   echo "Download concluído!" && ls -l client.ovpn
+                  cat client.ovpn
                 '''
               }
             }

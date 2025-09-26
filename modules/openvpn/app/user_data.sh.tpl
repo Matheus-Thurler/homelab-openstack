@@ -6,8 +6,7 @@ FLOATING_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || ech
 echo $FLOATING_IP >> /etc/environment
 
 # Executar o script OpenVPN em segundo plano e aguardar
-# sudo bash openvpn.sh --listenaddr $FLOATING_IP --serveraddr $FLOATING_IP --auto &
-sudo bash openvpn.sh --auto &
+sudo bash openvpn.sh --listenaddr $FLOATING_IP --serveraddr $FLOATING_IP --auto &
 
 # Aguardar a geração do client.ovpn
 timeout=120
