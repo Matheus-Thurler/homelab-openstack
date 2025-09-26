@@ -467,7 +467,7 @@ pipeline {
         stage('Deploy Kubespray (via VPN)') {
           agent {
             docker {
-              image ""ghcr.io/${githubOwnerLower}/${env.GITHUB_REPO}/${env.IMAGE_BASENAME}:latest""
+              image "ghcr.io/${githubOwnerLower}/${env.GITHUB_REPO}/${env.IMAGE_BASENAME}:latest"
               args '--cap-add NET_ADMIN --device /dev/net/tun --entrypoint="" -u root'
             }
           }
