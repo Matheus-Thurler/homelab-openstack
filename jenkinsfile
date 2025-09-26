@@ -316,7 +316,7 @@ pipeline {
 
   stages {
 
-    // Etapa 1: Limpa o workspace para garantir uma execução limpa
+    // Etapa 1: Limpa o workspace
     stage('Preparation') {
       steps {
         echo 'Limpando o workspace...'
@@ -324,19 +324,16 @@ pipeline {
       }
     }
 
-    // Etapa 2: Prepara as chaves SSH no workspace
+    // Etapa 2: Prepara as chaves SSH
     stage('authentication') {
       agent {
         docker { image 'alpine' }
       }
       steps {
-        // Usa o withCredentials para carregar a chave privada de forma segura
         withCredentials([sshUserPrivateKey(credentialsId: 'jenkins-priv-key', keyFileVariable: 'JENKINS_PRIV_KEY')]) {
           sh '''
-            # Copia a chave privada e pública para arquivos no workspace
             cp "$JENKINS_PRIV_KEY" id_rsa
             echo "$JENKINS_PUB_KEY" > id_rsa.pub
-            # Garante a permissão correta para a chave privada
             chmod 600 id_rsa
             echo "Chaves SSH preparadas no workspace."
           '''
@@ -344,35 +341,36 @@ pipeline {
       }
     }
 
-    // --- STAGE ALTERADO: Lógica de build simplificada ---
-    // Etapa 3: Constrói e envia a imagem do Kubespray se o Dockerfile mudou
+    // --- STAGE ALTERADO: Converte o nome de usuário para minúsculas ---
     stage('Build & Push Kubespray Image') {
       agent any 
       steps {
         script {
           // Obtém o hash curto do commit atual para usar como tag da imagem
           def imageTag = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-          // Constrói o nome completo da imagem no formato do GHCR
-          env.IMAGE_FULL_NAME = "ghcr.io/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.IMAGE_BASENAME}:${imageTag}"
+          
+          // --- ALTERAÇÃO AQUI ---
+          // Converte o nome do dono do repositório para minúsculas
+          def githubOwnerLower = env.GITHUB_OWNER.toLowerCase()
+
+          // Constrói o nome completo da imagem no formato do GHCR com o nome minúsculo
+          env.IMAGE_FULL_NAME = "ghcr.io/${githubOwnerLower}/${env.GITHUB_REPO}/${env.IMAGE_BASENAME}:${imageTag}"
 
           def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true)
           if (changedFiles.contains('Dockerfile')) {
             echo "Dockerfile alterado. Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
             
-            // O withCredentials não é mais necessário aqui, pois a variável GH_PAT
-            // já foi injetada pelo bloco 'environment' principal.
-            
-            // Faz login, build e push em um único comando 'sh' para usar a variável GH_PAT
-            sh '''
+            // Faz login, build e push usando o nome de usuário minúsculo
+            sh """
               echo "Fazendo login no GHCR..."
-              echo "${GH_PAT}" | docker login ghcr.io -u "${GITHUB_OWNER}" --password-stdin
+              echo "${GH_PAT}" | docker login ghcr.io -u "${githubOwnerLower}" --password-stdin
               
               echo "Construindo a imagem..."
               docker build -t "${IMAGE_FULL_NAME}" .
               
               echo "Enviando a imagem para o GHCR..."
               docker push "${IMAGE_FULL_NAME}"
-            '''
+            """
           } else {
             echo "Dockerfile não foi alterado. Build da imagem ignorado."
           }
@@ -407,8 +405,6 @@ pipeline {
         '''
       }
     }
-
-    // ... todos os outros stages ('init', 'plan', 'apply', etc.) permanecem exatamente os mesmos ...
 
     // Etapa 5: Inicializa o Terraform
     stage('init') {
