@@ -378,10 +378,8 @@ pipeline {
           agent any 
           steps {
             script {
-              def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true)
-              if (changedFiles.contains('Dockerfile')) {
-                echo "Dockerfile alterado. Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
-                def githubOwnerLower = env.GITHUB_OWNER.toLowerCase()
+              def githubOwnerLower = env.GITHUB_OWNER.toLowerCase()
+                echo "Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
                 sh """
                   echo "Fazendo login no GHCR..."
                   echo "${GH_PAT}" | docker login ghcr.io -u "${githubOwnerLower}" --password-stdin
@@ -390,9 +388,6 @@ pipeline {
                   echo "Enviando a imagem para o GHCR..."
                   docker push "${IMAGE_FULL_NAME}"
                 """
-              } else {
-                echo "Dockerfile não foi alterado. Build da imagem ignorado."
-              }
             }
           }
         }
@@ -467,7 +462,7 @@ pipeline {
         stage('Deploy Kubespray (via VPN)') {
           agent {
             docker {
-              image "ghcr.io/${githubOwnerLower}/${env.GITHUB_REPO}/${env.IMAGE_BASENAME}:latest"
+              image "${env.IMAGE_FULL_NAME}"
               args '--cap-add NET_ADMIN --device /dev/net/tun --entrypoint="" -u root'
             }
           }
