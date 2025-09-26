@@ -546,8 +546,9 @@ pipeline {
         sh '''
           set -e
 
-          echo "Iniciando a conexão OpenVPN em segundo plano..."
-          openvpn --config client.ovpn --daemon
+          echo "Iniciando a conexão OpenVPN em MODO DE DEBUG..."
+          # Executa em background, mas redireciona TODA a saída (stdout e stderr) para um arquivo de log
+          openvpn --config client.ovpn > openvpn.log 2>&1 &
 
           echo "Aguardando a interface de rede da VPN (tun0) ficar ativa..."
           for i in $(seq 1 10); do 
@@ -558,11 +559,16 @@ pipeline {
             echo "Aguardando..."
             sleep 10
             if [ $i -eq 10 ]; then
-              echo "ERRO: Timeout. A conexão VPN não foi estabelecida."
-              exit 1
+                echo "---------------------------------------------------------"
+                echo "ERRO: Timeout. A conexão VPN não foi estabelecida."
+                echo "Exibindo o log de erros do OpenVPN (openvpn.log):"
+                echo "---------------------------------------------------------"
+                cat openvpn.log
+                exit 1
             fi
           done
 
+          # Se a conexão funcionar, o resto do script continua aqui...
           echo "Executando o playbook do Kubespray..."
           export ANSIBLE_ROLES_PATH="$ANSIBLE_ROLES_PATH:/kubespray/roles"
           export ANSIBLE_HOST_KEY_CHECKING="False"
