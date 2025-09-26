@@ -343,6 +343,7 @@ pipeline {
 
     // --- STAGE ALTERADO: Converte o nome de usuário para minúsculas ---
     stage('Build & Push Kubespray Image') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent any 
       steps {
         script {
