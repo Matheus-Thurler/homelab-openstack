@@ -295,8 +295,9 @@ pipeline {
     JENKINS_PUB_KEY        = credentials('jenkins-pub-key')
     
     // --- Variáveis para o GitHub Container Registry (GHCR) ---
-    // ID da sua credencial "Secret text" com o PAT do GitHub
-    GITHUB_CREDENTIALS_ID  = credentials('github-pat') // <-- AJUSTE AQUI
+    // Carrega o conteúdo do PAT do GitHub para a variável de ambiente GH_PAT
+    GH_PAT                 = credentials('github-pat')
+    
     // Seu usuário ou organização do GitHub
     GITHUB_OWNER           = 'Matheus-Thurler' // <-- AJUSTE AQUI
     // O nome do seu repositório no GitHub
@@ -343,6 +344,7 @@ pipeline {
       }
     }
 
+    // --- STAGE ALTERADO: Lógica de build simplificada ---
     // Etapa 3: Constrói e envia a imagem do Kubespray se o Dockerfile mudou
     stage('Build & Push Kubespray Image') {
       agent any 
@@ -356,14 +358,21 @@ pipeline {
           def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true)
           if (changedFiles.contains('Dockerfile')) {
             echo "Dockerfile alterado. Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
-            withCredentials([string(credentialsId: "${env.GITHUB_CREDENTIALS_ID}", variable: 'GH_PAT')]) {
-              // Faz login no GHCR
-              sh "echo '${GH_PAT}' | docker login ghcr.io -u '${env.GITHUB_OWNER}' --password-stdin"
-              // Constrói a imagem
-              sh "docker build -t ${env.IMAGE_FULL_NAME} ."
-              // Envia a imagem para o GHCR
-              sh "docker push ${env.IMAGE_FULL_NAME}"
-            }
+            
+            // O withCredentials não é mais necessário aqui, pois a variável GH_PAT
+            // já foi injetada pelo bloco 'environment' principal.
+            
+            // Faz login, build e push em um único comando 'sh' para usar a variável GH_PAT
+            sh '''
+              echo "Fazendo login no GHCR..."
+              echo "${GH_PAT}" | docker login ghcr.io -u "${GITHUB_OWNER}" --password-stdin
+              
+              echo "Construindo a imagem..."
+              docker build -t "${IMAGE_FULL_NAME}" .
+              
+              echo "Enviando a imagem para o GHCR..."
+              docker push "${IMAGE_FULL_NAME}"
+            '''
           } else {
             echo "Dockerfile não foi alterado. Build da imagem ignorado."
           }
@@ -391,7 +400,6 @@ pipeline {
           mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
 
           echo "Baixando o arquivo clouds.yaml do MinIO..."
-          # Assume que o arquivo está em 'arquivos-openstack/clouds.yaml'
           mc cp deploy/arquivos-openstack/clouds.yaml ./clouds.yaml
           
           echo "Download do clouds.yaml concluído."
@@ -400,12 +408,13 @@ pipeline {
       }
     }
 
+    // ... todos os outros stages ('init', 'plan', 'apply', etc.) permanecem exatamente os mesmos ...
+
     // Etapa 5: Inicializa o Terraform
     stage('init') {
       agent {
         docker {
           image 'hashicorp/terraform:1.9.8'
-          // Roda como root para evitar problemas de permissão
           args '-u root --entrypoint=""'
         }
       }
@@ -439,14 +448,12 @@ pipeline {
       }
       steps {
         sh '''
-          # Garante que o script pare se houver um erro
           set -e
           
           echo "Executando terraform apply..."
           terraform apply -no-color -auto-approve
 
           echo "Salvando o IP da VPN em um arquivo..."
-          # O '-raw' remove as aspas do output, salvando apenas o IP puro
           terraform output -raw openvpn_ip > openvpn_ip.txt
 
           echo "IP salvo:"
@@ -468,7 +475,6 @@ pipeline {
         sh '''
           set -e 
 
-          # Instala o cliente OpenSSH (ssh e scp)
           apk update && apk add --no-cache openssh-client
 
           IP_ADDRESS=$(cat openvpn_ip.txt)
@@ -478,10 +484,8 @@ pipeline {
           fi
 
           echo "Tentando conectar na instância com IP: $IP_ADDRESS"
-
-          # Loop para aguardar o arquivo client.ovpn ser gerado
+          
           echo "Aguardando o arquivo client.ovpn ser gerado na instância..."
-          # Tenta por 5 minutos
           for i in $(seq 1 30); do
             if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
               echo "Arquivo encontrado na instância!"
@@ -521,7 +525,6 @@ pipeline {
       }
       steps {
         sh  '''
-          # O 'if' precisa de um espaço depois do '[' e antes do ']'
           if [ -f "client.ovpn" ]; then
             mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
             mc cp client.ovpn deploy/arquivos-openstack/
@@ -539,9 +542,7 @@ pipeline {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       agent {
         docker {
-          // Usa a imagem definida dinamicamente com a tag do commit, vinda do GHCR
           image "${env.IMAGE_FULL_NAME}"
-          // Argumentos essenciais para permitir que o OpenVPN gerencie a rede do contêiner
           args '--cap-add NET_ADMIN --device /dev/net/tun --entrypoint="" -u root'
         }
       }
@@ -619,7 +620,6 @@ pipeline {
           mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
 
           echo "Verificando se o arquivo client.ovpn existe no MinIO antes de remover..."
-          # 'mc stat' retorna um erro se o arquivo não existir.
           if mc stat deploy/arquivos-openstack/client.ovpn > /dev/null 2>&1; then
             echo "Arquivo encontrado. Removendo client.ovpn do MinIO..."
             mc rm deploy/arquivos-openstack/client.ovpn
