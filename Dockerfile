@@ -7,4 +7,5 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openvpn \
     iproute2 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
