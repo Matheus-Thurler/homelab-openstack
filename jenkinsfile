@@ -309,7 +309,7 @@ pipeline {
 
   stages {
 
-    // Etapa 1: Limpa o workspace
+    // Etapa 1: Limpa o workspace (sempre executa)
     stage('Preparation') {
       steps {
         echo 'Limpando o workspace...'
@@ -317,7 +317,7 @@ pipeline {
       }
     }
 
-    // Etapa 2: Prepara as chaves SSH
+    // Etapa 2: Prepara as chaves SSH (sempre executa)
     stage('authentication') {
       agent {
         docker { image 'alpine' }
@@ -334,7 +334,7 @@ pipeline {
       }
     }
 
-    // NOVO STAGE: Define o nome da imagem de forma incondicional
+    // Etapa 3: Define o nome da imagem (sempre executa)
     stage('Define Image Name') {
       agent any
       steps {
@@ -347,35 +347,7 @@ pipeline {
       }
     }
 
-    // Etapa 4: Constrói e envia a imagem se o Dockerfile mudou
-    stage('Build & Push Kubespray Image') {
-      when { expression { params.CREATE_OR_DESTROY == "Create" } }
-      agent any 
-      steps {
-        script {
-          def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true)
-          if (changedFiles.contains('Dockerfile')) {
-            echo "Dockerfile alterado. Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
-            def githubOwnerLower = env.GITHUB_OWNER.toLowerCase()
-            
-            sh """
-              echo "Fazendo login no GHCR..."
-              echo "${GH_PAT}" | docker login ghcr.io -u "${githubOwnerLower}" --password-stdin
-              
-              echo "Construindo a imagem..."
-              docker build -t "${IMAGE_FULL_NAME}" .
-              
-              echo "Enviando a imagem para o GHCR..."
-              docker push "${IMAGE_FULL_NAME}"
-            """
-          } else {
-            echo "Dockerfile não foi alterado. Build da imagem ignorado."
-          }
-        }
-      }
-    }
-
-    // Etapa 5: Baixa a configuração do OpenStack (clouds.yaml) do MinIO
+    // Etapa 4: Baixa a configuração do OpenStack (sempre executa)
     stage('Download OpenStack Config') {
       agent {
         docker {
@@ -391,160 +363,188 @@ pipeline {
       steps {
         sh '''
           set -e
-          echo "Configurando alias para o MinIO..."
           mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
-          echo "Baixando o arquivo clouds.yaml do MinIO..."
           mc cp deploy/arquivos-openstack/clouds.yaml ./clouds.yaml
           echo "Download do clouds.yaml concluído."
-          ls -l clouds.yaml
         '''
       }
     }
 
-    // ... stages 'init', 'plan', 'apply', 'Download OpenVPN Config', 'Fazer Upload para o MinIO' ...
-    // Nenhuma alteração necessária nestes stages
-    stage('init') {
-        agent { docker { image 'hashicorp/terraform:1.9.8'; args '-u root --entrypoint=""' } }
-        steps { sh 'terraform init -reconfigure -no-color' }
-    }
-    stage('plan') {
-        when { expression { params.CREATE_OR_DESTROY == "Create" } }
-        agent { docker { image 'hashicorp/terraform:1.9.8'; args '-u root --entrypoint=""' } }
-        steps { sh 'terraform plan -no-color' }
-    }
-    stage('apply') {
-        when { expression { params.CREATE_OR_DESTROY == "Create" } }
-        agent { docker { image 'hashicorp/terraform:1.9.8'; args '-u root --entrypoint=""' } }
-        steps { sh '''
-            set -e
-            terraform apply -no-color -auto-approve
-            terraform output -raw openvpn_ip > openvpn_ip.txt
-            echo "IP salvo:" && cat openvpn_ip.txt
-        ''' }
-    }
-    stage('Download OpenVPN Config') {
-        when { expression { params.CREATE_OR_DESTROY == "Create" } }
-        agent { docker { image 'alpine:latest'; args '-u root --entrypoint=""' } }
-        steps { sh '''
-            set -e 
-            apk update && apk add --no-cache openssh-client
-            IP_ADDRESS=$(cat openvpn_ip.txt)
-            if [ -z "$IP_ADDRESS" ]; then echo "ERRO: IP não encontrado."; exit 1; fi
-            echo "Aguardando arquivo client.ovpn na instância $IP_ADDRESS..."
-            for i in $(seq 1 30); do
-                if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
-                    echo "Arquivo encontrado!" && break
+    // --- BLOCO DE STAGES PARA 'CREATE' ---
+    stage('Create Workflow') {
+      when { expression { params.CREATE_OR_DESTROY == "Create" } }
+      stages {
+        stage('Build & Push Kubespray Image') {
+          agent any 
+          steps {
+            script {
+              def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true)
+              if (changedFiles.contains('Dockerfile')) {
+                echo "Dockerfile alterado. Construindo e enviando a imagem: ${env.IMAGE_FULL_NAME}"
+                def githubOwnerLower = env.GITHUB_OWNER.toLowerCase()
+                sh """
+                  echo "Fazendo login no GHCR..."
+                  echo "${GH_PAT}" | docker login ghcr.io -u "${githubOwnerLower}" --password-stdin
+                  echo "Construindo a imagem..."
+                  docker build -t "${IMAGE_FULL_NAME}" .
+                  echo "Enviando a imagem para o GHCR..."
+                  docker push "${IMAGE_FULL_NAME}"
+                """
+              } else {
+                echo "Dockerfile não foi alterado. Build da imagem ignorado."
+              }
+            }
+          }
+        }
+        stage('Terraform Init & Apply') {
+          agent {
+            docker {
+              image 'hashicorp/terraform:1.9.8'
+              args '-u root --entrypoint=""'
+            }
+          }
+          steps {
+            sh '''
+              set -e
+              terraform init -reconfigure -no-color
+              terraform plan -no-color
+              terraform apply -no-color -auto-approve
+              terraform output -raw openvpn_ip > openvpn_ip.txt
+              echo "IP salvo:" && cat openvpn_ip.txt
+            '''
+          }
+        }
+        stage('Download & Upload VPN Config') {
+          stages {
+            stage('Download from Instance') {
+              agent {
+                docker { image 'alpine:latest'; args '-u root --entrypoint=""' }
+              }
+              steps {
+                sh '''
+                  set -e 
+                  apk update && apk add --no-cache openssh-client
+                  IP_ADDRESS=$(cat openvpn_ip.txt)
+                  if [ -z "$IP_ADDRESS" ]; then echo "ERRO: IP não encontrado."; exit 1; fi
+                  echo "Aguardando arquivo client.ovpn na instância $IP_ADDRESS..."
+                  for i in $(seq 1 30); do
+                      if ssh -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS "test -f /home/ubuntu/client.ovpn"; then
+                          echo "Arquivo encontrado!" && break
+                      fi
+                      echo "Aguardando 10s..." && sleep 10
+                      if [ $i -eq 30 ]; then echo "ERRO: Timeout." && exit 1; fi
+                  done
+                  echo "Baixando arquivo..."
+                  scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
+                  echo "Download concluído!" && ls -l client.ovpn
+                '''
+              }
+            }
+            stage('Upload to MinIO') {
+              agent {
+                docker { image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'; args '-u root --entrypoint=""' }
+              }
+              environment {
+                  MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
+                  MINIO_ACCESS_KEY = credentials('aws-access-key-id')
+                  MINIO_SECRET_KEY = credentials('aws-secret-access-key')
+              }
+              steps {
+                sh  '''
+                  if [ -f "client.ovpn" ]; then
+                      mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+                      mc cp client.ovpn deploy/arquivos-openstack/
+                      echo "Arquivo client.ovpn enviado para o MinIO."
+                  else
+                      echo "Arquivo client.ovpn não encontrado para upload." && exit 1
+                  fi
+                '''
+              }
+            }
+          }
+        }
+        stage('Deploy Kubespray (via VPN)') {
+          agent {
+            docker {
+              image "${env.IMAGE_FULL_NAME}"
+              args '--cap-add NET_ADMIN --device /dev/net/tun --entrypoint="" -u root'
+            }
+          }
+          steps {
+            sh '''
+              set -e
+              echo "Iniciando a conexão OpenVPN..."
+              openvpn --config client.ovpn > openvpn.log 2>&1 &
+              echo "Aguardando a interface VPN (tun0)..."
+              for i in $(seq 1 10); do 
+                if ip a | grep -q tun0; then
+                  echo "Conexão VPN estabelecida." && break
                 fi
-                echo "Aguardando 10s..." && sleep 10
-                if [ $i -eq 30 ]; then echo "ERRO: Timeout." && exit 1; fi
-            done
-            echo "Baixando arquivo..."
-            scp -i id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$IP_ADDRESS:/home/ubuntu/client.ovpn ./client.ovpn
-            echo "Download concluído!" && ls -l client.ovpn
-        ''' }
+                echo "Aguardando..." && sleep 10
+                if [ $i -eq 10 ]; then
+                    echo "ERRO: Timeout na conexão VPN."
+                    echo "--- LOG DO OPENVPN ---" && cat openvpn.log && exit 1
+                fi
+              done
+              echo "Executando playbook do Kubespray..."
+              export ANSIBLE_HOST_KEY_CHECKING="False"
+              ansible-playbook \
+                --become \
+                --inventory inventory.ini \
+                --extra-vars "kube_network_plugin=flannel" \
+                --private-key id_rsa \
+                /kubespray/cluster.yml
+              echo "Kubespray finalizado. Desconectando VPN..."
+              pkill openvpn
+            '''
+          }
+        }
+      }
     }
-    stage('Fazer Upload para o MinIO') {
-        when { expression { params.CREATE_OR_DESTROY == "Create" } }
-        agent { docker { image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'; args '-u root --entrypoint=""' } }
-        environment {
+
+    // --- BLOCO DE STAGES PARA 'DESTROY' ---
+    stage('Destroy Workflow') {
+      when { expression { params.CREATE_OR_DESTROY == "Destroy" } }
+      stages {
+        stage('Destroy Infrastructure') {
+          agent {
+            docker {
+              image 'hashicorp/terraform:1.9.8'
+              args '-u root --entrypoint=""'
+            }
+          }
+          steps {
+            sh '''
+              terraform init -reconfigure -no-color
+              terraform apply -destroy -no-color -auto-approve
+            '''
+          }
+        }
+        stage('Cleanup MinIO') {
+          agent {
+            docker {
+              image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
+              args '-u root --entrypoint=""'
+            }
+          }
+          environment {
             MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
             MINIO_ACCESS_KEY = credentials('aws-access-key-id')
             MINIO_SECRET_KEY = credentials('aws-secret-access-key')
+          }
+          steps {
+            sh '''
+              mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
+              if mc stat deploy/arquivos-openstack/client.ovpn > /dev/null 2>&1; then
+                echo "Removendo client.ovpn do MinIO..."
+                mc rm deploy/arquivos-openstack/client.ovpn
+                echo "Arquivo removido."
+              else
+                echo "Arquivo client.ovpn não encontrado no MinIO."
+              fi
+            '''
+          }
         }
-        steps { sh  '''
-            if [ -f "client.ovpn" ]; then
-                mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
-                mc cp client.ovpn deploy/arquivos-openstack/
-                echo "Arquivo client.ovpn enviado para o MinIO."
-            else
-                echo "Arquivo client.ovpn não encontrado para upload." && exit 1
-            fi
-        ''' }
-    }
-    
-    // Etapa 11: Deploy do Kubernetes com Kubespray
-    stage('Deploy Kubespray (via VPN)') {
-      when { expression { params.CREATE_OR_DESTROY == "Create" } }
-      agent {
-        docker {
-          // A variável agora está sempre definida, garantindo que o agent seja carregado
-          image "${env.IMAGE_FULL_NAME}"
-          args '--cap-add NET_ADMIN --device /dev/net/tun --entrypoint="" -u root'
-        }
-      }
-      steps {
-        sh '''
-          set -e
-          echo "Iniciando a conexão OpenVPN..."
-          openvpn --config client.ovpn > openvpn.log 2>&1 &
-
-          echo "Aguardando a interface VPN (tun0)..."
-          for i in $(seq 1 10); do 
-            if ip a | grep -q tun0; then
-              echo "Conexão VPN estabelecida." && break
-            fi
-            echo "Aguardando..." && sleep 10
-            if [ $i -eq 10 ]; then
-                echo "ERRO: Timeout na conexão VPN."
-                echo "--- LOG DO OPENVPN ---" && cat openvpn.log && exit 1
-            fi
-          done
-
-          echo "Executando playbook do Kubespray..."
-          export ANSIBLE_HOST_KEY_CHECKING="False"
-          ansible-playbook \
-            --become \
-            --inventory inventory.ini \
-            --extra-vars "kube_network_plugin=flannel" \
-            --private-key id_rsa \
-            /kubespray/cluster.yml
-            
-          echo "Kubespray finalizado. Desconectando VPN..."
-          pkill openvpn
-        '''
-      }
-    }
-
-    // ---------------- Etapas de Destruição ----------------
-
-    stage('Destroy Infrastructure') {
-      when { expression { params.CREATE_OR_DESTROY == "Destroy" } }
-      agent {
-        docker {
-          image 'hashicorp/terraform:1.9.8'
-          args '-u root --entrypoint=""'
-        }
-      }
-      steps {
-        sh 'terraform apply -destroy -no-color -auto-approve'
-      }
-    }
-
-    stage('Cleanup MinIO') {
-      when { expression { params.CREATE_OR_DESTROY == "Destroy" } }
-      agent {
-        docker {
-          image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'
-          args '-u root --entrypoint=""'
-        }
-      }
-      environment {
-        MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
-        MINIO_ACCESS_KEY = credentials('aws-access-key-id')
-        MINIO_SECRET_KEY = credentials('aws-secret-access-key')
-      }
-      steps {
-        sh '''
-          echo "Configurando alias para o MinIO..."
-          mc alias set deploy $MINIO_ENDPOINT $MINIO_ACCESS_KEY $MINIO_SECRET_KEY --api S3v4
-          if mc stat deploy/arquivos-openstack/client.ovpn > /dev/null 2>&1; then
-            echo "Removendo client.ovpn do MinIO..."
-            mc rm deploy/arquivos-openstack/client.ovpn
-            echo "Arquivo removido."
-          else
-            echo "Arquivo client.ovpn não encontrado no MinIO."
-          fi
-        '''
       }
     }
   }
