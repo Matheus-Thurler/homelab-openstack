@@ -304,6 +304,16 @@ pipeline {
       choices: ['Create', 'Destroy'],
       description: 'Deseja criar ou destruir a infraestrutura?'
     )
+    booleanParam(
+      name: 'RUN_KUBESPRAY',
+      defaultValue: true,
+      description: 'Executar o Kubespray após criar a infraestrutura?'
+    )
+    choice(
+      name: 'INFRASTRUCTURE_ONLY',
+      choices: ['false', 'true'],
+      description: 'Apenas infraestrutura (sem VPN e Kubespray)?'
+    )
   }
 
   stages {
@@ -358,6 +368,7 @@ pipeline {
       when { expression { params.CREATE_OR_DESTROY == "Create" } }
       stages {
         stage('Build & Push Kubespray Image') {
+          when { expression { params.RUN_KUBESPRAY == true } }
           agent any 
           steps {
             script {
@@ -387,9 +398,11 @@ pipeline {
           }
         }
         
-        stage('Download & Upload VPN Config') {
+        // STAGES DE VPN - SÓ EXECUTAM SE FOR RODAR KUBESPRAY
+        stage('VPN Setup') {
+          when { expression { params.RUN_KUBESPRAY == true } }
           stages {
-            stage('Download from Instance') {
+            stage('Download VPN Config') {
               agent { docker { image 'alpine:latest'; args '-u root --entrypoint=""' } }
               steps {
                 sh '''
@@ -410,7 +423,8 @@ pipeline {
                 '''
               }
             }
-            stage('Upload to MinIO') {
+            
+            stage('Upload VPN to MinIO') {
               agent { docker { image 'minio/mc:RELEASE.2025-08-13T08-35-41Z'; args '-u root --entrypoint=""' } }
               environment {
                   MINIO_ENDPOINT   = 'http://192.168.68.110:9000'
@@ -432,7 +446,9 @@ pipeline {
           }
         }
         
-        stage('Deploy Kubespray (via VPN)') {
+        // KUBESPRAY - SÓ EXECUTA SE SOLICITADO
+        stage('Deploy Kubespray') {
+          when { expression { params.RUN_KUBESPRAY == true } }
           agent {
             docker {
               image "${env.IMAGE_FULL_NAME}"
@@ -474,9 +490,9 @@ pipeline {
           }
         }
         
-        // NOVA ETAPA - SÓ EXECUTA NO CREATE
+        // DEPLOY KUBECONFIG - SÓ EXECUTA SE RODOU KUBESPRAY
         stage('Deploy Kubeconfig to MinIO') {
-          when { expression { params.CREATE_OR_DESTROY == "Create" } }
+          when { expression { params.RUN_KUBESPRAY == true } }
           agent {
             docker { 
               image 'alpine:latest'
@@ -526,6 +542,23 @@ pipeline {
               
               pkill openvpn
             '''
+          }
+        }
+        
+        // STAGE PARA APENAS INFRAESTRUTURA (SEM KUBESPRAY)
+        stage('Infrastructure Only Complete') {
+          when { 
+            allOf {
+              expression { params.CREATE_OR_DESTROY == "Create" }
+              expression { params.RUN_KUBESPRAY == false }
+            }
+          }
+          agent any
+          steps {
+            echo "✅ Infraestrutura criada com sucesso!"
+            echo "ℹ️  Kubespray não foi executado (conforme solicitado)"
+            echo "📋 IP da VPN: $(cat openvpn_ip.txt)"
+            echo "💡 Para executar o Kubespray posteriormente, rode a pipeline com RUN_KUBESPRAY=true"
           }
         }
       }
